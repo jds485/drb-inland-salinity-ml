@@ -40,7 +40,8 @@ plot_hyperparam_opt_results_RF <- function(opt_result, model_name, out_dir){
     geom_point(size = 2) +
     facet_wrap(~ .metric, scales = "free", nrow = 2) +
     scale_color_viridis_c(option = "plasma", begin = .9, end = 0) +
-    ggtitle(model_name)
+    ggtitle(model_name, 
+            subtitle = 'min_n: minimum node size\nmtry: number of attributes to randomly sample in each tree split')
   
   ggsave(filename = fileout, plot = p1, device = 'png')
   
@@ -90,8 +91,8 @@ plot_vip <- function(RF_model, model_name, num_features, out_dir){
   p1 <- vip::vip(RF_model %>% extract_fit_parsnip(), 
             num_features = num_features, aesthetics = list(width = 0.6)) +
     ggtitle(model_name) +
-    theme(axis.title.x = element_text(size = 18),
-          axis.text.y = element_text(size = 18))
+    theme(axis.title.x = element_text(size = 16),
+          axis.text.y = element_text(size = 10))
   
   ggsave(filename = fileout, plot = p1, device = 'png')
   
@@ -127,13 +128,15 @@ plot_pred_obs <- function(df_pred_obs, model_name, out_dir,
   if(count_shade){
     fileout <- paste0('pred_obs_scatter_', model_name, '_density.png')
     
+    #.pred is a column name
     p1 <- ggplot(df_pred_obs, aes(x=log10(obs), y=log10(.pred))) +
       geom_bin2d(bins = 100) +
       scale_fill_distiller(palette = 7, direction = 1) +
       theme_bw() +
       theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
       xlim(0,5) + ylim(0,5) +
-      xlab('Observed') + ylab('Predicted') +
+      xlab(expression(paste('Observed Specific Conductivity (', mu, 'S/cm)', sep = ''))) + 
+      ylab(expression(paste('Predicted Specific Conductivity (', mu, 'S/cm)', sep = ''))) +
       ggtitle(paste0('Model: ', model_name)) +
       geom_abline(slope=1, intercept=0)
     
@@ -148,7 +151,9 @@ plot_pred_obs <- function(df_pred_obs, model_name, out_dir,
     png(filename = fileout, width = 4, height = 4, units = 'in', res = 200)
     plot(df_pred_obs$obs, df_pred_obs$.pred,
          xlim = c(1,plt_lim), ylim = c(1,plt_lim),
-         xlab = 'Observed', ylab = 'Predicted', cex = 0.4, pch = 16,
+         xlab = expression(paste('Observed Specific Conductivity (', mu, 'S/cm)', sep = '')), 
+         ylab = expression(paste('Predicted Specific Conductivity (', mu, 'S/cm)', sep = '')), 
+         cex = 0.4, pch = 16,
          main = paste0('Model: ', model_name),
          cex.main = 0.8, log = 'xy')
     lines(c(1,plt_lim), c(1,plt_lim), col = 'red')
@@ -176,6 +181,7 @@ plot_metric_boxplot <- function(data_split, model_name, pred_var, out_dir){
   boxplot(data_split$training[[pred_var]],
           data_split$testing[[pred_var]], 
           names = c('Training', 'Testing'),
+          ylab = expression(paste('Specific Conductivity (', mu, 'S/cm)', sep = '')),
           main = paste0('Model: ', model_name),
           cex.main = 0.8, log = 'y')
   dev.off()
@@ -205,7 +211,7 @@ barplot_compare_RF <- function(mod, model_name, pred_var, perf_metric, out_dir){
                        sd = c(tune::show_best(mod$grid_params, n = 1, metric = perf_metric)$std_err,
                               NA),
                        Dataset = c('Val', 'Test'),
-                       grp = c("RF-Static","RF-Static"))
+                       grp = c(model_name, model_name))
   
   p1 <- ggplot(data = plt_df, aes(x = grp, y = perf, fill = Dataset)) +
     geom_bar(stat="identity", position=position_dodge(), width = 0.6) +
@@ -214,8 +220,8 @@ barplot_compare_RF <- function(mod, model_name, pred_var, perf_metric, out_dir){
     geom_errorbar(aes(ymin = perf - 2*sd, ymax = perf + 2*sd), width = .2,
                   position = position_dodge(0.6)) +
     xlab('') +
-    ylab(perf_metric) + 
-    scale_x_discrete(limits=c("RF-Static")) +
+    ylab(bquote(.(perf_metric) ~ (mu * S/cm))) + 
+    scale_x_discrete(limits = model_name) +
     theme(axis.title.y = element_text(size = 14),
           axis.text.x = element_text(size = 14)) +
     ggtitle(paste0(model_name, ', ', pred_var))
@@ -271,6 +277,7 @@ plot_barplot <- function(attr_data, file_path,
     # barplot
     cols <- colnames(dat_subset)
     attr_plot <- ggplot() + 
+      geom_abline(slope = 0, intercept = 0) +
       geom_col(data = dat_subset, aes(x=.data[[cols[1]]], 
                                       y=.data[[cols[2]]]),
                width = 0.5) + 
@@ -280,6 +287,7 @@ plot_barplot <- function(attr_data, file_path,
             axis.title = element_text(size = 12)) +
       ggtitle(model_name) +
       ylim(plt_lim) +
+      ylab(bquote(.(cols[2]) ~ (mu * S/cm))) + 
       if (plot_month_names){
         if(!is.null(label_sequence)){
           scale_x_continuous(breaks = dat_subset[[1]][label_sequence], 
@@ -375,11 +383,13 @@ plot_timeseries <- function(pred_df, network_geometry, model_name, out_dir){
       #observation locations
       geom_point(shape = '|', mapping = aes(x = Date, y = y0, color = as.character(training))) +
       {if (nrow(plt_df) == 1){
+        #.pred is a column name
         geom_point(mapping = aes(x = Date, y = .pred, color = 'predicted'))
       }else{
         geom_line(mapping = aes(x = Date, y = .pred, color = 'predicted'))
       }}+
       theme_bw() +
+      theme(legend.position = "bottom") +
       xlab('Date') +
       ylab(expression(paste('Specific Conductivity (', mu, 'S/cm)', sep = ''))) + 
       ggtitle(model_name, subtitle = paste0('reach ', reaches[i])) +
@@ -394,12 +404,12 @@ plot_timeseries <- function(pred_df, network_geometry, model_name, out_dir){
               mapping = aes(color='red'),
               size = 1) + 
       theme_bw() + 
-      theme(plot.margin = unit(c(0,0,0,2), "cm"),
-            axis.text = element_text(size = 6),
+      theme(plot.margin = unit(c(0,0,0,0), "cm"),
+            axis.text = element_text(size = 4),
             legend.position = "none")
     
-    # create combined plot showing violin plot and spatial distribution
-    p_combined <- p_time + p_space + patchwork::plot_layout(ncol=2)
+    # create combined plot showing timeseries plot and spatial location
+    p_combined <- p_time + p_space + patchwork::plot_layout(ncol=2, widths = c(2,1))
     
     ggsave(filename = filesout[i], plot = p_combined, device = 'png')
   }
@@ -423,7 +433,7 @@ plot_shap_global <- function(shap, model_name, out_dir, num_features = 40){
   fileout <- file.path(out_dir, 
                        paste0('SHAP_global_', model_name, '.png'))
   
-  p1 <- autoplot(shap, num_features = num_features) +
+  p1 <- autoplot(shap, type = "importance", num_features = num_features) +
     ggtitle(model_name) + 
     theme(axis.text.y = element_text(size = 5))
   
