@@ -506,54 +506,53 @@ plot_shap_individual <- function(shap, data, reach, date, model_name, out_dir,
 }
 
 
-#' plot_pdp <- function(data, model_name, out_dir){
-#'   #' 
-#'   #' @description Creates PDP and ICE plots for each feature in data
-#'   #'
-#'   #' @param data the dataframe used to make model predictions within the workflow
-#'   #' @param model_name character string describing the model. Will be added 
-#'   #' to the end of the filename before the file extension, and also be the plot title.
-#'   #' @param out_dir output directory
-#'   #'
-#'   #' @return Returns the paths to png files of PDP and ICE for each feature
-#'   
-#'   #number of features to make plots for
-#'   n_plts <- ncol(data)
-#'   
-#'   filesout_pdp <- vector('character', length = n_plts)
-#'   filesout_ice <- vector('character', length = n_plts)
-#'   
-#'   for(i in 1:n_plts){
-#'     filesout_pdp[i] <- file.path(out_dir, 
-#'                              paste0('PDP_', colnames(data)[i], '_',
-#'                                     model_name, '.png'))
-#'     filesout_ice[i] <- file.path(out_dir, 
-#'                                  paste0('ICE_', colnames(data)[i], '_',
-#'                                         model_name, '.png'))
-#'     
-#'     #PDP
-#'     
-#'     #get data into class partial to make plots
-#'     pdp::partial(object = ..., pred.var = ..., ice = FALSE, train = ..., type = 'regression', pred.fun = predict_shap_data,
-#'                  plot = TRUE, rug = TRUE, smooth = TRUE, plot.engine = 'ggplot2', )
-#'     
-#'     partial_1 <- pdp::partial(object = p4_train_RF_min_static_dynamic_temporal$workflow, 
-#'                  pred.var = colnames(p4_train_RF_min_static_dynamic_temporal$best_fit$splits[[1]]$data)[1],
-#'                  plot = FALSE, 
-#'                  train = as.data.frame(p4_train_RF_min_static_dynamic_temporal$best_fit$splits[[1]]$data[p4_train_RF_min_static_dynamic_temporal$best_fit$splits[[1]]$in_id,]), 
-#'                  type = 'regression', 
-#'                  pred.fun = predict_shap_data,
-#'                  quantiles = TRUE, probs = seq(0,1,0.1), grid.resolution = NULL)
-#'                  
-#'     p <- autoplot(partial_1, rug = TRUE,
-#'                   train = as.data.frame(p4_train_RF_min_static_dynamic_temporal$best_fit$splits[[1]]$data[p4_train_RF_min_static_dynamic_temporal$best_fit$splits[[1]]$in_id,])) +
-#'       ggtitle(model_name)
-#' 
-#'     ggsave(filename = filesout_pdp[i], plot = p, device = 'png')
-#'     
-#'     ggsave(filename = filesout_ice[i], plot = p, device = 'png')
-#'   }
-#'   
-#'   filesout <- c(filesout_pdp, filesout_ice)
-#'   return(filesout)
-#' }
+plot_pdp <- function(model, data, train_id, model_name, out_dir, 
+                     ice = FALSE, ncores = 1){
+  #'
+  #' @description Creates PDP or ICE plots for each feature in data
+  #'
+  #' @param data the dataframe used to make model predictions within the workflow
+  #' @param model_name character string describing the model. Will be added
+  #' to the end of the filename before the file extension, and also be the plot title.
+  #' @param out_dir output directory
+  #' @param ice logical. if TRUE, makes ICE plots with PDP overlain.
+  #' @param ncores number of cores to use for parallel plot creation
+  #'
+  #' @return Returns the paths to png files of PDP and ICE for each feature
+
+  #number of features to make plots for
+  n_plts <- ncol(data)
+
+  cl = parallel::makeCluster(ncores)
+  doParallel::registerDoParallel(cl)
+  parallel::clusterExport(cl = cl, varlist = 'predict_pdp_data')
+
+  foreach(i = 1:n_plts, .inorder = TRUE, .combine = c, 
+          .packages = c('ggplot2', 'pdp', 'tidyverse')) %dopar% {
+    filesout <- file.path(out_dir,
+                             paste0(ifelse(ice, 'ICE_', 'PDP_'), colnames(data)[i], '_',
+                                    model_name, '.png'))
+
+    #get data into class partial to make plots
+    partial_1 <- pdp::partial(object = model,
+                 pred.var = colnames(data)[i],
+                 plot = FALSE,
+                 train = data[train_id,],
+                 type = 'regression',
+                 pred.fun = predict_pdp_data, 
+                 grid.resolution = 25)
+
+    p <- autoplot(partial_1, 
+                  rug = TRUE,
+                  train = data[train_id,]) +
+      ggtitle(model_name) +
+      ylab(expression(paste('Predicted Specific Conductivity (', mu, 'S/cm)', sep = ''))) +
+      theme_classic()
+
+    ggsave(filename = fileout, plot = p, device = 'png')
+  }
+  
+  parallel::stopCluster(cl)
+
+  return(filesout)
+}

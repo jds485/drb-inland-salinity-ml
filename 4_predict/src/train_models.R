@@ -472,6 +472,26 @@ predict_shap_data <- function(object, newdata){
   return(preds)
 }
 
+#Need to make a separate function for the PDP plots because
+# the function is only allowed to have 2 args.
+predict_pdp_data <- function(object, newdata){
+  #' 
+  #' @description uses the provided model to predict on the test dataset. 
+  #' Averages over all data to result in PDP
+  #'
+  #' @param object model workflow containing a single model that will be used
+  #' to predict on the test_data.
+  #' @param newdata dataset containing features and the metric to be predicted
+  #' 
+  #' @return Returns mean prediction
+  
+  preds <- predict(object, newdata, type = 'numeric') %>% 
+    pull(.pred) %>%
+    mean()
+  
+  return(preds)
+}
+
 
 get_maxcores_by_RAM <- function(RAM_per_core){
   #' 
